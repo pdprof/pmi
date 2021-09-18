@@ -19,32 +19,27 @@ import javax.enterprise.inject.Produces;
  * <dl>
  * <dt>{@value #ENV_AWAIT_SECONDS}</dt>
  * <dd>アプリケーション終了時に実行中のタスクに対する待機時間(秒)(デフォルト値: 15)</dd>
- * <dt>{@value #ENV_POOL_SIZE}</dt>
- * <dd>スレッド・プールか管理するワーカー・スレッドの数(デフォルト値: 5)</dd>
  * </dl>
  */
 @ApplicationScoped
-public class AsyncContext {
+public class WorkorPool {
 
 	/**
 	 * アプリケーション終了時に実行中のタスクに対する待機時間を指定するための環境変数名です。
-	 * @see AsyncContext
+	 * @see WorkorPool
 	 */
 	public static final String ENV_AWAIT_SECONDS = "SENDER_AWAIT_SECONDS";
 
 	/**
 	 * スレッド・プールか管理するワーカー・スレッドの数を指定するための環境変数名です。
-	 * @see AsyncContext
+	 * @see WorkorPool
 	 */
 	public static final String ENV_POOL_SIZE = "SENDER_POOL_SIZE";
 
-	private Logger logger = Logger.getLogger(AsyncContext.class.getName());
+	private Logger logger = Logger.getLogger(WorkorPool.class.getName());
 
 	/** アプリケーション終了時に実行中のタスクに対する待機時間(秒)です。 */
 	private long awaiting = 15;
-
-	/** スレッド・プールか管理するワーカー・スレッドの数です。 */
-	private int size = 5;
 
 	@Resource(lookup = "java:comp/DefaultManagedThreadFactory")
 	private ManagedThreadFactory factory;
@@ -84,14 +79,7 @@ public class AsyncContext {
 					() -> ENV_AWAIT_SECONDS + "の値が不正なため設定を変更できません。");
 		}
 
-		try {
-			size = Integer.parseInt(getEnvValue(ENV_POOL_SIZE, "5"));
-		} catch (NumberFormatException e) {
-			logger.log(Level.SEVERE, e,
-					() -> ENV_POOL_SIZE + "の値が不正なため設定を変更できません。");
-		}
-
-		executor = Executors.newFixedThreadPool(size, factory);
+		executor = Executors.newCachedThreadPool(factory);
 	}
 
 	@PreDestroy

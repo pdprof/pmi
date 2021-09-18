@@ -35,13 +35,13 @@ import javax.ws.rs.core.Response;
 @Path("/v1")
 public class WorkloadEmurator {
 
-	private Logger logger = Logger.getLogger(WorkloadEmurator.class.getName());
+	private Logger logger = Logger.getLogger(getClass().getName());
 
 	@Resource(lookup = "jdbc/derby")
 	private DataSource resource;
 
 	@Inject
-	private AsyncContext executor;
+	private WorkorPool executor;
 
 	private Client client = ClientBuilder.newClient();
 
@@ -84,7 +84,7 @@ public class WorkloadEmurator {
 				Thread current = Thread.currentThread();
 				logger.info(() -> "start ".concat(current.getName()));
 
-				WebTarget creator = client.target(root.concat("/session.jsp"));
+				WebTarget creator = client.target(root.concat("/session"));
 				Cookie session;
 				try (Response created = creator.request().get()) {
 					session = created.getCookies().get("JSESSIONID");
@@ -99,7 +99,7 @@ public class WorkloadEmurator {
 					return;
 				}
 
-				WebTarget terminator = client.target(root.concat("/invalidate.jsp"));
+				WebTarget terminator = client.target(root.concat("/invalidate"));
 				try (Response invalidated = terminator.request().cookie(session).get()) {
 					logger.info(() -> "done ".concat(current.getName()));
 				} catch (ProcessingException e) {

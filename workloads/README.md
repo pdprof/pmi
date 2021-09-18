@@ -7,20 +7,21 @@ This project represents a container which is allowing cluster-internal access to
 - [REST connector for AdminClient](https://openliberty.io/docs/21.0.0.9/reference/feature/restConnector-2.0.html)
 
 ## Endpoints for starting mock workload
-- Connection Pool: POST http://localhost:8080/workloads/api/v1/jdbc
-- HTTP Session: POST http://localhost:8080/workloads/api/v1/session
+- Connection Pool: POST http://localhost:9080/workloads/api/v1/jdbc
+- HTTP Session: POST http://localhost:9080/workloads/api/v1/session
 
-- Parameters:
-
-```
-curl -H 'Content-Type: application/json' -d '{"duration":180000}' -v http://localhost:9080/workloads/api/v1/session
-```
+- Parameters
 
 |Name|Meaning|Default Value|
 |---|---|---|
 |duration|Expected time for resource occupation(ms)|15000|
 |range|Time variety(ms): actual occupation time should be between (duration - range) and (duration + range)|3000|
 |multiplicity|Number of concurrent action of mock workloads started by this invocation|3|
+
+- Sample
+```
+curl -H 'Content-Type: application/json' -d '{"duration":180000}' -v http://localhost:9080/workloads/api/v1/session
+```
 
 ## Endpoints for obtaining performance statistic(s)
 - JVMStats

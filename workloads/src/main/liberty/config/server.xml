@@ -1,4 +1,4 @@
-<server description="db-workload">
+<server description="workloads">
 
 	<!-- Enable features -->
 	<featureManager>

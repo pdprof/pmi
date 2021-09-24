@@ -23,9 +23,9 @@ import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import javax.inject.Inject;
+import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
@@ -52,6 +52,7 @@ public class RestClientController extends HttpServlet {
 
 	private static final long serialVersionUID = 1L;
 
+	/** A dummy implementation for skipping server certification check. */
 	private static final TrustManager DUMMY_TRUST_MANAGER = new X509TrustManager() {
 		@Override
 		public void checkClientTrusted(X509Certificate[] chain, String authType) {
@@ -67,10 +68,15 @@ public class RestClientController extends HttpServlet {
 		}
 	};
 
+	/** A dummy implementation for skipping host identity check of TLS connection. */
+	private static final HostnameVerifier DUMMY_HOSTNAME_VERIFIER =
+			(host, session) -> host != null;
+
 	private static final List<String> EMPTY_PATHS = Arrays.asList(null, "", "/");
 
 	private static final Pattern ID_PATTERN = Pattern.compile("^/([^/]+)(|/.*)$");
 
+	/** A Comparator ordering StatisticsRequest(s) on a first-come, first-served basis. */
 	private static final Comparator<StatisticsRequest> FIRST_COME =
 			(left, right) -> (int) (left.getRequested() - right.getRequested());
 
@@ -83,9 +89,14 @@ public class RestClientController extends HttpServlet {
 	@Inject
 	private WorkerController executor;
 
-	private final Map<String, StatisticsRequest> requested = new ConcurrentHashMap<>();
+	private final Map<String, StatisticsRequest> reserved = new ConcurrentHashMap<>();
 
-	private Client client;
+	private final Client client;
+
+	public RestClientController() {
+		super();
+		client = createClient();
+	}
 
 	@Override
 	public void doPost(HttpServletRequest request, HttpServletResponse response)
@@ -121,7 +132,7 @@ public class RestClientController extends HttpServlet {
 		response.setContentType(MediaType.TEXT_HTML);
 		response.setCharacterEncoding(UTF_8.name());
 
-		List<StatisticsRequest> available = new ArrayList<>(requested.values());
+		List<StatisticsRequest> available = new ArrayList<>(reserved.values());
 		try (PrintWriter out = response.getWriter()) {
 			out.print("<!DOCTYPE html>\r\n");
 			out.print("<html lang=\"ja\">\r\n");
@@ -140,12 +151,23 @@ public class RestClientController extends HttpServlet {
 
 	protected void reserve(
 			HttpServletRequest request, HttpServletResponse response) {
-		StatisticsRequest task = new StatisticsRequest();
-		task.setLocation(request.getParameter("location"));
-		task.setQuery(request.getParameter("query"));
-		task.setUser(request.getParameter("user"));
-		task.setPassword(request.getParameter("password"));
-		requested.put(task.getId(), task);
+		StatisticsRequest work = new StatisticsRequest();
+		work.setLocation(request.getParameter("location"));
+		work.setQuery("/");
+		work.setUser(request.getParameter("user"));
+		work.setPassword(request.getParameter("password"));
+
+		try (Response obtained = createInvocation(work).get()) {
+			work.setQuery(request.getParameter("query"));
+			work.setStatus(StatisticsRequest.STARTABLE);
+		} catch(ProcessingException e) {
+			logger.log(Level.SEVERE, e,
+					() -> work.getId().concat(": ").concat(e.getLocalizedMessage()));
+			work.setLocation(e.getLocalizedMessage());
+			work.setQuery("");
+		}
+
+		reserved.put(work.getId(), work);
 
 		refresh(request, response);
 	}
@@ -153,13 +175,15 @@ public class RestClientController extends HttpServlet {
 	protected void finish(
 			HttpServletRequest request, HttpServletResponse response, String id) {
 		executor.detach(id, true);
-		requested.remove(id);
+		reserved.remove(id);
 
 		refresh(request, response);
 	}
 
 	protected void monitor(
 			HttpServletRequest request, HttpServletResponse response, String id) {
+		reserved.get(id).setStatus(StatisticsRequest.STARTED);
+
 		long start = System.currentTimeMillis();
 		AtomicBoolean verified = new AtomicBoolean();
 		long initial = ofNullable(request.getParameter("initial"))
@@ -186,7 +210,7 @@ public class RestClientController extends HttpServlet {
 				return;
 			}
 
-			Builder endpoint = createEndpoint(requested.get(id));
+			Builder endpoint = createInvocation(reserved.get(id));
 
 			long next = start + initial;
 			if (!untill(context, next, id)) {
@@ -220,17 +244,19 @@ public class RestClientController extends HttpServlet {
 		logger.info(() -> "Task is scheduled for ".concat(id));
 	}
 
-	@PostConstruct
-	private void createClient() {
+	private Client createClient() {
 		try {
 			TrustManager[] trustManagers = { DUMMY_TRUST_MANAGER };
 			SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
 			sslContext.init(null, trustManagers, null);
-			client = ClientBuilder.newBuilder().sslContext(sslContext).build();
+			return ClientBuilder.newBuilder()
+					.sslContext(sslContext)
+					.hostnameVerifier(DUMMY_HOSTNAME_VERIFIER)
+					.build();
 		} catch (KeyManagementException | NoSuchAlgorithmException e) {
 			logger.log(Level.WARNING, e,
 					() -> "Using default SSLContext: ".concat(e.toString()));
-			client = ClientBuilder.newClient();
+			return ClientBuilder.newClient();
 		}
 	}
 
@@ -238,7 +264,7 @@ public class RestClientController extends HttpServlet {
 			HttpServletRequest request, HttpServletResponse response, String id) {
 		response.setContentType("text/csv");
 		response.setCharacterEncoding(UTF_8.name());
-		response.setHeader("Content-Disposition",
+		response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
 				"attachment; filename=\"" + id + ".csv\"");
 
 		AsyncContext result = request.startAsync(request, response);
@@ -246,18 +272,19 @@ public class RestClientController extends HttpServlet {
 		return result;
 	}
 
-	private Builder createEndpoint(StatisticsRequest work) {
+	private Builder createInvocation(StatisticsRequest work) {
 		StringBuilder buffer = new StringBuilder();
 		buffer.append(work.getUser()).append(':').append(work.getPassword());
 		String encoded = Base64.getUrlEncoder().encodeToString(
 				buffer.toString().getBytes(UTF_8));
 		buffer.setLength(0);
 		buffer.append("Basic ").append(encoded);
+		String authorization = buffer.toString();
 
 		return client.target(work.getLocation().concat(work.getQuery()))
 				.request()
 				.accept(MediaType.APPLICATION_JSON)
-				.header(HttpHeaders.AUTHORIZATION, buffer.toString());
+				.header(HttpHeaders.AUTHORIZATION, authorization);
 	}
 
 	private String format(long timestamp, Response obtained, AtomicBoolean first) {
@@ -291,33 +318,46 @@ public class RestClientController extends HttpServlet {
 		}
 	}
 
-	private void render(PrintWriter out, StatisticsRequest request) {
-		out.print("<ul style=\"list-style: none; border: 1px solid #ccccff; "
-				+ "border-radius: 5px; background-color: #eeeeff;\">\r\n");
+	private void render(PrintWriter out, StatisticsRequest work) {
+		if (work.getStatus() >= StatisticsRequest.STARTABLE) {
+			out.print("<ul style=\"list-style: none; border: 1px solid #ccccff; "
+					+ "border-radius: 5px; background-color: #eeeeff;\">\r\n");
+		} else {
+			out.print("<ul style=\"list-style: none; border: 1px solid #ffcccc; "
+					+ "border-radius: 5px; background-color: #ffeeee;\">\r\n");
+		}
 
 		out.print("<li>");
-		out.print(request.getId());
+		out.print(work.getId());
 		out.print("</li>\r\n");
 
 		out.print("<li style=\"float: left;\"><form action=\"");
-		out.print(request.getId());
+		out.print(work.getId());
 		out.print("\" method=\"GET\" target=\"_blank\" "
 				+ "onsubmit=\"elements.start.disabled = true;\">");
-		out.print("<input name=\"initial\" size=\"4\" value=\"15\">");
-		out.print("<input name=\"period\" size=\"4\" value=\"30\">");
-		out.print("<input name=\"times\" size=\"4\" value=\"-1\">");
-		out.print("<input type=\"submit\" name=\"start\" value=\"start\">");
+		if (work.getStatus() == StatisticsRequest.STARTABLE) {
+			out.print("<input name=\"initial\" size=\"4\" value=\"15\"> ");
+			out.print("<input name=\"period\" size=\"4\" value=\"30\"> ");
+			out.print("<input name=\"times\" size=\"4\" value=\"-1\"> ");
+			out.print("<input type=\"submit\" name=\"start\" value=\"start\"> ");
+		} else {
+			out.print("<input name=\"initial\" size=\"4\"> ");
+			out.print("<input name=\"period\" size=\"4\"> ");
+			out.print("<input name=\"times\" size=\"4\"> ");
+			out.print("<input type=\"submit\" name=\"start\" value=\"start\" "
+					+ "disabled=\"disabled\"> ");
+		}
 		out.print("</form></li>\r\n");
 
 		out.print("<li><form action=\"");
-		out.print(request.getId());
+		out.print(work.getId());
 		out.print("/finished\" method=\"POST\">");
 		out.print("<input type=\"submit\" value=\"finish\">");
 		out.print("</form></li>\r\n");
 
 		out.print("<li style=\"clear: both;\">");
-		out.print(request.getLocation());
-		out.print(request.getQuery());
+		out.print(work.getLocation());
+		out.print(work.getQuery());
 		out.print("</li>\r\n");
 
 		out.print("</ul>\r\n");
@@ -337,7 +377,7 @@ public class RestClientController extends HttpServlet {
 		context.complete();
 		logger.info(() -> id.concat(" finished."));
 		executor.detach(id, false);
-		requested.remove(id);
+		reserved.remove(id);
 	}
 
 	private boolean untill(AsyncContext context, long time, String id) {

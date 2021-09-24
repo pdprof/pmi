@@ -1,5 +1,6 @@
 package workload.api;
 
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -30,13 +31,7 @@ public class WorkorPool {
 	 */
 	public static final String ENV_AWAIT_SECONDS = "SENDER_AWAIT_SECONDS";
 
-	/**
-	 * スレッド・プールか管理するワーカー・スレッドの数を指定するための環境変数名です。
-	 * @see WorkorPool
-	 */
-	public static final String ENV_POOL_SIZE = "SENDER_POOL_SIZE";
-
-	private Logger logger = Logger.getLogger(WorkorPool.class.getName());
+	private final Logger logger = Logger.getLogger(getClass().getName());
 
 	/** アプリケーション終了時に実行中のタスクに対する待機時間(秒)です。 */
 	private long awaiting = 15;
@@ -52,7 +47,7 @@ public class WorkorPool {
 	 * @return ExecutorService のインスタンス
 	 */
 	@Produces
-	public ExecutorService getAsyncContext() {
+	public ExecutorService getExecutor() {
 		return executor;
 	}
 
@@ -63,11 +58,9 @@ public class WorkorPool {
 	 * @return 環境変数の値
 	 */
 	private String getEnvValue(String name, String defaultValue) {
-		String value = System.getenv(name);
-		if (value == null || value.isEmpty()) {
-			return defaultValue;
-		}
-		return value;
+		return Optional.ofNullable(System.getenv(name))
+				.filter(value -> value != null && !value.isEmpty())
+				.orElse(defaultValue);
 	}
 
 	@PostConstruct

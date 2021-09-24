@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: collector-rest
+  labels:
+    app: collector-rest
+spec:
+  selector:
+    matchLabels:
+      app: collector-rest
+  template:
+    metadata:
+      labels:
+        app: collector-rest
+    spec:
+      containers:
+      - name: collector-rest
+        image: 'image-registry.openshift-image-registry.svc:5000/pmi/collector-rest:latest'
+        ports:
+        - containerPort: 9543
+        - containerPort: 9180
+--- 
+apiVersion: v1
+kind: Service
+metadata:
+  name: collector-rest
+  labels:
+    app: collector-rest
+spec:
+  selector:
+    app: collector-rest
+  ports:
+  - name: http
+    port: 9180
+  - name: https
+    port: 9543
+---
+apiVersion: v1
+kind: Route
+metadata:
+  name: collector-rest
+  labels:
+    app: collector-rest
+spec:
+  to:
+    kind: Service
+    name: collector-rest
+  port:
+    targetPort: http

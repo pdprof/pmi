@@ -35,7 +35,7 @@ import javax.ws.rs.core.Response;
 @Path("/v1")
 public class WorkloadEmurator {
 
-	private Logger logger = Logger.getLogger(getClass().getName());
+	private final Logger logger = Logger.getLogger(getClass().getName());
 
 	@Resource(lookup = "jdbc/derby")
 	private DataSource resource;
@@ -51,7 +51,7 @@ public class WorkloadEmurator {
 		Map<String, Object> result = new LinkedHashMap<>();
 
 		for (int i = 0; i < workload.getMultiplicity(); i++) {
-			executor.getAsyncContext().submit(() -> {
+			executor.getExecutor().submit(() -> {
 				Thread current = Thread.currentThread();
 				logger.info(() -> "start ".concat(current.getName()));
 				try (Connection connection = resource.getConnection()) {
@@ -80,7 +80,7 @@ public class WorkloadEmurator {
 
 		String root = "http://localhost:9080".concat(request.getContextPath());
 		for (int i = 0; i < workload.getMultiplicity(); i++) {
-			executor.getAsyncContext().submit(() -> {
+			executor.getExecutor().submit(() -> {
 				Thread current = Thread.currentThread();
 				logger.info(() -> "start ".concat(current.getName()));
 

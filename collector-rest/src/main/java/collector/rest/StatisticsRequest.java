@@ -4,6 +4,12 @@ import java.util.UUID;
 
 public class StatisticsRequest {
 
+	public static final int INVALID = -1;
+
+	public static final int STARTABLE = 0;
+
+	public static final int STARTED = 1;
+
 	private String location;
 
 	private String query;
@@ -11,6 +17,8 @@ public class StatisticsRequest {
 	private String user;
 
 	private String password;
+
+	private int status = INVALID;
 
 	private final long requested = System.currentTimeMillis();
 
@@ -36,6 +44,14 @@ public class StatisticsRequest {
 		return password;
 	}
 
+	public long getRequested() {
+		return requested;
+	}
+
+	public int getStatus() {
+		return status;
+	}
+
 	public void setLocation(String location) {
 		this.location = location;
 	}
@@ -52,8 +68,17 @@ public class StatisticsRequest {
 		this.password = password;
 	}
 
-	public long getRequested() {
-		return requested;
+	public void setStatus(int status) {
+		switch (status) {
+		case INVALID:
+		case STARTABLE:
+		case STARTED:
+			this.status = status;
+			break;
+
+		default:
+			throw new IllegalArgumentException("invalid value: " + status);
+		}
 	}
 
 }

@@ -23,6 +23,6 @@ Alternatively, you can run each application with `mvn liberty:dev` in Eclipse pr
 Note that this operation creates copy of liberty server on working directory (${basedir}/target) of each project.
 Please clean up them with `mvn clean` when they become unnecessary.
 
-## Use docker and openshhit image to do mustgather hands on
+## Use docker and OpenShift image to do mustgather hands on
 
 Please take a look at ***-docker/mustgather-*** directory

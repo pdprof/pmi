@@ -2,6 +2,7 @@ package workload.api;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.Optional;
 import java.util.logging.Logger;
 
 import javax.servlet.ServletException;
@@ -39,8 +40,8 @@ public class SessionController extends HttpServlet {
 	@Override
 	public void doGet(HttpServletRequest request, HttpServletResponse response)
 			throws IOException, ServletException {
-		String path = request.getServletPath();
-		switch ((path == null) ? "" : path) {
+		String path = Optional.ofNullable(request.getServletPath()).orElse("");
+		switch (path) {
 		case SESSION:
 			create(request, response);
 			break;
@@ -60,10 +61,9 @@ public class SessionController extends HttpServlet {
 	 * @param request Request Object
 	 * @param response Response Object
 	 * @throws IOException When fail to output results
-	 * @throws ServletException When fail to create session
 	 */
 	private void create(HttpServletRequest request,
-			HttpServletResponse response) throws IOException, ServletException {
+			HttpServletResponse response) throws IOException {
 		HttpSession session = request.getSession(false);
 		if (session != null) {
 			logger.severe(() -> "Session already exists: ".concat(session.getId()));
@@ -90,10 +90,9 @@ public class SessionController extends HttpServlet {
 	 * @param request Request Object
 	 * @param response Response Object
 	 * @throws IOException When fail to output results
-	 * @throws ServletException When fail to invalidate session
 	 */
 	private void invalidate(HttpServletRequest request,
-			HttpServletResponse response) throws IOException, ServletException {
+			HttpServletResponse response) throws IOException {
 		HttpSession session = request.getSession(false);
 		if (session == null) {
 			logger.severe("Session has been already invalidated.");

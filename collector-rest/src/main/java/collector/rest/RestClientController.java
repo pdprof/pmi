@@ -331,28 +331,28 @@ public class RestClientController extends HttpServlet {
 		out.print(work.getId());
 		out.print("</li>\r\n");
 
-		out.print("<li style=\"float: left;\"><form action=\"");
+		out.print("<li style=\"float: left;\"><form method=\"GET\" action=\"");
 		out.print(work.getId());
-		out.print("\" method=\"GET\" target=\"_blank\" "
-				+ "onsubmit=\"elements.start.disabled = true;\">");
+		out.print("\" onsubmit=\"elements.start.disabled = true;\">");
+		out.print("initial(sec.)-period(sec.)-times ");
 		if (work.getStatus() == StatisticsRequest.STARTABLE) {
-			out.print("<input name=\"initial\" size=\"4\" value=\"15\"> ");
-			out.print("<input name=\"period\" size=\"4\" value=\"30\"> ");
+			out.print("<input name=\"initial\" size=\"4\" value=\"15\">-");
+			out.print("<input name=\"period\" size=\"4\" value=\"30\">-");
 			out.print("<input name=\"times\" size=\"4\" value=\"-1\"> ");
 			out.print("<input type=\"submit\" name=\"start\" value=\"start\"> ");
 		} else {
-			out.print("<input name=\"initial\" size=\"4\"> ");
-			out.print("<input name=\"period\" size=\"4\"> ");
+			out.print("<input name=\"initial\" size=\"4\">-");
+			out.print("<input name=\"period\" size=\"4\">-");
 			out.print("<input name=\"times\" size=\"4\"> ");
 			out.print("<input type=\"submit\" name=\"start\" value=\"start\" "
-					+ "disabled=\"disabled\"> ");
+					+ "disabled=\"disabled\">");
 		}
 		out.print("</form></li>\r\n");
 
-		out.print("<li><form action=\"");
+		out.print("<li><form method=\"POST\" action=\"");
 		out.print(work.getId());
-		out.print("/finished\" method=\"POST\">");
-		out.print("<input type=\"submit\" value=\"finish\">");
+		out.print("/finished\">");
+		out.print(" <input type=\"submit\" value=\"finish\">");
 		out.print("</form></li>\r\n");
 
 		out.print("<li style=\"clear: both;\">");

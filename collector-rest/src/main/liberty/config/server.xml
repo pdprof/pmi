@@ -7,4 +7,7 @@
 
 	<!-- To access this server from a remote client add a host attribute to the following element, e.g. host="*" -->
 	<httpEndpoint httpPort="9180" httpsPort="9543" id="defaultHttpEndpoint" host="*"/>
+
+	<!-- Automatically expand WAR files and EAR files -->
+	<applicationManager autoExpand="true"/>
 </server>

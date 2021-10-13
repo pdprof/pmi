@@ -11,21 +11,15 @@ import javax.annotation.PreDestroy;
 import javax.enterprise.context.ApplicationScoped;
 
 /**
- * ExecutorService をラップして、非同期処理のコンテキストを提供するユーティリティーです。
+ * Controller for tasks represented as {@code Future}.
  */
 @ApplicationScoped
 public class WorkerController {
 
-	/**
-	 * アプリケーション終了時に実行中のタスクに対する待機時間を指定するための環境変数名です。
-	 * @see WorkorPool
-	 */
-	public static final String ENV_AWAIT_SECONDS = "SENDER_AWAIT_SECONDS";
-
-	/** 管理下にあるタスクのIDとタスク自体とを関連付ける Map です。 */
+	/** Map associating the ID of a task with its owner task. */
 	private final Map<String, Future<?>> tasks = new ConcurrentHashMap<>();
 
-	private Logger logger = Logger.getLogger(getClass().getName());
+	private final Logger logger = Logger.getLogger(getClass().getName());
 
 	/**
 	 * Register a task using ID and the Future instance to be controlled.
@@ -39,7 +33,7 @@ public class WorkerController {
 	/**
 	 * Cancels a task specified by ID.
 	 * @param id ID of the task to be cancelled
-	 * @param interrupt TODO
+	 * @param interrupt specify {@code true} if Thread interruption is necessary
 	 * @see #attach(Future, long)
 	 */
 	public void detach(String id, boolean interrupt) {

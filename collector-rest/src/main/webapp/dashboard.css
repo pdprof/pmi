@@ -1,0 +1,24 @@
+ul.active {
+	list-style: none;
+	border: 1px solid #ccccff;
+	border-radius: 5px;
+	background-color: #eeeeff;
+}
+
+ul.inactive {
+	list-style: none;
+	border: 1px solid #ffcccc;
+	border-radius: 5px;
+	background-color: #ffeeee;
+}
+
+ul.active form, ul.inactive form {
+	display: inline-block;
+}
+
+form.inactive input {
+	pointer-events: none;
+	color: #999999;
+	border: 1px solid #ffbbbb;
+	background-color: #ffdddd;
+}

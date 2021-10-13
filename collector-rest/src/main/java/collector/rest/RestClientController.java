@@ -46,8 +46,7 @@ import javax.ws.rs.core.Response;
 
 import collector.rest.stat.StatEntry;
 
-@WebServlet(name = "RestClientController", urlPatterns = "/requests/*",
-		asyncSupported = true)
+@WebServlet(name = "RestClientController", urlPatterns = "/requests/*", asyncSupported = true)
 public class RestClientController extends HttpServlet {
 
 	private static final long serialVersionUID = 1L;
@@ -72,10 +71,6 @@ public class RestClientController extends HttpServlet {
 	private static final HostnameVerifier DUMMY_HOSTNAME_VERIFIER =
 			(host, session) -> host != null;
 
-	private static final List<String> EMPTY_PATHS = Arrays.asList(null, "", "/");
-
-	private static final Pattern ID_PATTERN = Pattern.compile("^/([^/]+)(|/.*)$");
-
 	/** A Comparator ordering StatisticsRequest(s) on a first-come, first-served basis. */
 	private static final Comparator<StatisticsRequest> FIRST_COME =
 			(left, right) -> (int) (left.getRequested() - right.getRequested());
@@ -83,6 +78,10 @@ public class RestClientController extends HttpServlet {
 	private static final GenericType<List<StatEntry>> STATISTICS =
 			new GenericType<List<StatEntry>>() {
 	};
+
+	private static final List<String> EMPTY_PATHS = Arrays.asList(null, "", "/");
+
+	private static final Pattern ID_PATTERN = Pattern.compile("^/([^/]+)(|/.*)$");
 
 	private final Logger logger = Logger.getLogger(getClass().getName());
 
@@ -128,6 +127,11 @@ public class RestClientController extends HttpServlet {
 		}
 	}
 
+	/**
+	 * Render the list of statistics to {@code response}.
+	 * @param response response object
+	 * @throws IOException fail to render the list of statistics
+	 */
 	protected void list(HttpServletResponse response) throws IOException {
 		response.setContentType(MediaType.TEXT_HTML);
 		response.setCharacterEncoding(UTF_8.name());
@@ -139,6 +143,7 @@ public class RestClientController extends HttpServlet {
 			out.print("<head>\r\n");
 			out.print("\t<meta charset=\"UTF-8\">\r\n");
 			out.print("\t<title>current requests</title>\r\n");
+			out.print("<link href=\"/collector-rest/dashboard.css\" rel=\"stylesheet\">");
 			out.print("</head>\r\n");
 			out.print("<body>\r\n");
 			available.stream()
@@ -149,8 +154,12 @@ public class RestClientController extends HttpServlet {
 		}
 	}
 
-	protected void reserve(
-			HttpServletRequest request, HttpServletResponse response) {
+	/**
+	 * Reserve a statistics and record its ID.
+	 * @param request request object
+	 * @param response response object
+	 */
+	protected void reserve(HttpServletRequest request, HttpServletResponse response) {
 		StatisticsRequest work = new StatisticsRequest();
 		work.setLocation(request.getParameter("location"));
 		work.setQuery("/");
@@ -172,16 +181,13 @@ public class RestClientController extends HttpServlet {
 		refresh(request, response);
 	}
 
-	protected void finish(
-			HttpServletRequest request, HttpServletResponse response, String id) {
-		executor.detach(id, true);
-		reserved.remove(id);
-
-		refresh(request, response);
-	}
-
-	protected void monitor(
-			HttpServletRequest request, HttpServletResponse response, String id) {
+	/**
+	 * Start to gathering the statistics.
+	 * @param request request object
+	 * @param response response object
+	 * @param id ID of statistics to monitor
+	 */
+	protected void monitor(HttpServletRequest request, HttpServletResponse response, String id) {
 		reserved.get(id).setStatus(StatisticsRequest.STARTED);
 
 		long start = System.currentTimeMillis();
@@ -227,8 +233,7 @@ public class RestClientController extends HttpServlet {
 					out.print(data);
 					out.flush();
 				} catch (RuntimeException e) {
-					logger.log(Level.WARNING, e,
-							() -> "Cannot process: ".concat(e.toString()));
+					logger.log(Level.WARNING, e, () -> "Cannot process: ".concat(e.toString()));
 				}
 
 				next += period;
@@ -242,6 +247,19 @@ public class RestClientController extends HttpServlet {
 		context.start(task);
 		executor.attach(id, task);
 		logger.info(() -> "Task is scheduled for ".concat(id));
+	}
+
+	/**
+	 * Finish the statistics specified by {@code id}.
+	 * @param request request object
+	 * @param response response object
+	 * @param id ID of statistics to end
+	 */
+	protected void finish(HttpServletRequest request, HttpServletResponse response, String id) {
+		executor.detach(id, true);
+		reserved.remove(id);
+
+		refresh(request, response);
 	}
 
 	private Client createClient() {
@@ -275,8 +293,7 @@ public class RestClientController extends HttpServlet {
 	private Builder createInvocation(StatisticsRequest work) {
 		StringBuilder buffer = new StringBuilder();
 		buffer.append(work.getUser()).append(':').append(work.getPassword());
-		String encoded = Base64.getUrlEncoder().encodeToString(
-				buffer.toString().getBytes(UTF_8));
+		String encoded = Base64.getUrlEncoder().encodeToString(buffer.toString().getBytes(UTF_8));
 		buffer.setLength(0);
 		buffer.append("Basic ").append(encoded);
 		String authorization = buffer.toString();
@@ -287,6 +304,13 @@ public class RestClientController extends HttpServlet {
 				.header(HttpHeaders.AUTHORIZATION, authorization);
 	}
 
+	/**
+	 * Format a statistic returned by RESTConnector.
+	 * @param timestamp current time in milliseconds
+	 * @param obtained response including entity returned by RESTConnector
+	 * @param first flag determining the header line has not been rendered
+	 * @return a set of formated statistic
+	 */
 	private String format(long timestamp, Response obtained, AtomicBoolean first) {
 		if (!obtained.hasEntity()) {
 			return timestamp + ",(no contents)\r\n";
@@ -318,44 +342,46 @@ public class RestClientController extends HttpServlet {
 		}
 	}
 
+	/**
+	 * Render a request for statistics.
+	 * @param out {@code PrintWriter} to which the request is rendered
+	 * @param work request for a statistics to be rendered
+	 */
 	private void render(PrintWriter out, StatisticsRequest work) {
 		if (work.getStatus() >= StatisticsRequest.STARTABLE) {
-			out.print("<ul style=\"list-style: none; border: 1px solid #ccccff; "
-					+ "border-radius: 5px; background-color: #eeeeff;\">\r\n");
+			out.print("<ul class=\"active\">\r\n");
 		} else {
-			out.print("<ul style=\"list-style: none; border: 1px solid #ffcccc; "
-					+ "border-radius: 5px; background-color: #ffeeee;\">\r\n");
+			out.print("<ul class=\"inactive\">\r\n");
 		}
 
 		out.print("<li>");
 		out.print(work.getId());
 		out.print("</li>\r\n");
 
-		out.print("<li style=\"float: left;\"><form method=\"GET\" action=\"");
+		out.print("<li><form method=\"GET\" action=\"");
 		out.print(work.getId());
-		out.print("\" onsubmit=\"elements.start.disabled = true;\">");
-		out.print("initial(sec.)-period(sec.)-times ");
+		out.print("\" target=\"");
+		out.print(work.getId());
+		out.print("\" onsubmit=\"elements.start.disabled = true;\"");
 		if (work.getStatus() == StatisticsRequest.STARTABLE) {
-			out.print("<input name=\"initial\" size=\"4\" value=\"15\">-");
-			out.print("<input name=\"period\" size=\"4\" value=\"30\">-");
-			out.print("<input name=\"times\" size=\"4\" value=\"-1\"> ");
-			out.print("<input type=\"submit\" name=\"start\" value=\"start\"> ");
+			out.print(" class=\"active\">");
 		} else {
-			out.print("<input name=\"initial\" size=\"4\">-");
-			out.print("<input name=\"period\" size=\"4\">-");
-			out.print("<input name=\"times\" size=\"4\"> ");
-			out.print("<input type=\"submit\" name=\"start\" value=\"start\" "
-					+ "disabled=\"disabled\">");
+			out.print(" class=\"inactive\">");
 		}
-		out.print("</form></li>\r\n");
+		out.print("initial(sec.)-period(sec.)-times ");
+		out.print("<input name=\"initial\" size=\"4\" value=\"15\">-");
+		out.print("<input name=\"period\" size=\"4\" value=\"30\">-");
+		out.print("<input name=\"times\" size=\"4\" value=\"-1\"> ");
+		out.print("<input type=\"submit\" name=\"start\" value=\"start\"> ");
+		out.print("</form>");
 
-		out.print("<li><form method=\"POST\" action=\"");
+		out.print("<form method=\"POST\" action=\"");
 		out.print(work.getId());
 		out.print("/finished\">");
-		out.print(" <input type=\"submit\" value=\"finish\">");
+		out.print("&nbsp;<input type=\"submit\" value=\"finish\">");
 		out.print("</form></li>\r\n");
 
-		out.print("<li style=\"clear: both;\">");
+		out.print("<li>");
 		out.print(work.getLocation());
 		out.print(work.getQuery());
 		out.print("</li>\r\n");
@@ -363,8 +389,12 @@ public class RestClientController extends HttpServlet {
 		out.print("</ul>\r\n");
 	}
 
-	private void refresh(
-			HttpServletRequest request, HttpServletResponse response) {
+	/**
+	 * Redirect response to refresh the list of request for a statistics.
+	 * @param request request object
+	 * @param response response object
+	 */
+	private void refresh(HttpServletRequest request, HttpServletResponse response) {
 		response.setStatus(HttpServletResponse.SC_SEE_OTHER);
 		StringBuilder location = new StringBuilder()
 				.append(request.getContextPath())
@@ -380,6 +410,13 @@ public class RestClientController extends HttpServlet {
 		reserved.remove(id);
 	}
 
+	/**
+	 * Wait till the specified time, aborting as soon as possible if the task is interrupted.
+	 * @param context {@code AsyncContext} associated with current task
+	 * @param time the time when end to wait
+	 * @param id ID of current task
+	 * @return {@code true} if timed-up without interruption
+	 */
 	private boolean untill(AsyncContext context, long time, String id) {
 		while (System.currentTimeMillis() < time) {
 			if (Thread.interrupted()) {

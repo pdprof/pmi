@@ -46,6 +46,9 @@ import javax.ws.rs.core.Response;
 
 import collector.rest.stat.StatEntry;
 
+/**
+ * Controller communicating with RESTConnector for a MBeanServer.
+ */
 @WebServlet(name = "RestClientController", urlPatterns = "/requests/*", asyncSupported = true)
 public class RestClientController extends HttpServlet {
 
@@ -75,6 +78,10 @@ public class RestClientController extends HttpServlet {
 	private static final Comparator<StatisticsRequest> FIRST_COME =
 			(left, right) -> (int) (left.getRequested() - right.getRequested());
 
+	private static final GenericType<List<ManagedObject>> BEANS =
+			new GenericType<List<ManagedObject>>() {
+	};
+
 	private static final GenericType<List<StatEntry>> STATISTICS =
 			new GenericType<List<StatEntry>>() {
 	};
@@ -82,6 +89,9 @@ public class RestClientController extends HttpServlet {
 	private static final List<String> EMPTY_PATHS = Arrays.asList(null, "", "/");
 
 	private static final Pattern ID_PATTERN = Pattern.compile("^/([^/]+)(|/.*)$");
+
+	private static final Pattern NAME_PATTERN =
+			Pattern.compile("^WebSphere:.*type=(\\w+Stats|perf)(|,.*)$");
 
 	private final Logger logger = Logger.getLogger(getClass().getName());
 
@@ -167,18 +177,44 @@ public class RestClientController extends HttpServlet {
 		work.setPassword(request.getParameter("password"));
 
 		try (Response obtained = createInvocation(work).get()) {
-			work.setQuery(request.getParameter("query"));
-			work.setStatus(StatisticsRequest.STARTABLE);
-		} catch(ProcessingException e) {
+			String query = request.getParameter("query");
+			if (query.isEmpty()) {
+				reserve(work, obtained.readEntity(BEANS));
+			} else {
+				work.setQuery(query);
+				work.setStatus(StatisticsRequest.STARTABLE);
+				reserved.put(work.getId(), work);
+			}
+		} catch (ProcessingException e) {
 			logger.log(Level.SEVERE, e,
 					() -> work.getId().concat(": ").concat(e.getLocalizedMessage()));
 			work.setLocation(e.getLocalizedMessage());
 			work.setQuery("");
+			reserved.put(work.getId(), work);
 		}
 
-		reserved.put(work.getId(), work);
-
 		refresh(request, response);
+	}
+
+	/**
+	 * Reserve all statistics listed by {@code MBeanServer}.
+	 * @param base {@code StatisticsRequest} represents basic information
+	 * @param beans list of metadata for {@code MBean}
+	 */
+	private void reserve(StatisticsRequest base, List<ManagedObject> beans) {
+		for (ManagedObject target : beans) {
+			String query = target.getObjectName();
+			if (NAME_PATTERN.matcher(query).matches()) {
+				StatisticsRequest work = new StatisticsRequest();
+				work.setLocation(base.getLocation());
+				work.setQuery(query.concat("/attributes"));
+				work.setUser(base.getUser());
+				work.setPassword(base.getPassword());
+				work.setStatus(StatisticsRequest.STARTABLE);
+
+				reserved.put(work.getId(), work);
+			}
+		}
 	}
 
 	/**
@@ -200,9 +236,7 @@ public class RestClientController extends HttpServlet {
 		AsyncContext context = createAsyncContext(request, response, id);
 		RunnableFuture<?> task = new FutureTask<>(() -> {
 			int remains = ofNullable(request.getParameter("times"))
-					.map(Integer::parseInt)
-					.filter(value -> value >= 0)
-					.orElse(Integer.MAX_VALUE);
+					.map(Integer::parseInt).filter(value -> value >= 0).orElse(Integer.MAX_VALUE);
 			int attempts = remains;
 			logger.info(() -> String.valueOf(attempts).concat(" attempts start"));
 
@@ -262,6 +296,10 @@ public class RestClientController extends HttpServlet {
 		refresh(request, response);
 	}
 
+	/**
+	 * Create JAX-RS client with dummy {@code TrustManager} and dummy {@code HostnameVerifier}.
+	 * @return JAX-RS client
+	 */
 	private Client createClient() {
 		try {
 			TrustManager[] trustManagers = { DUMMY_TRUST_MANAGER };
@@ -278,6 +316,13 @@ public class RestClientController extends HttpServlet {
 		}
 	}
 
+	/**
+	 * Create context for Servlet asynchronous operation.
+	 * @param request request object
+	 * @param response response object
+	 * @param id ID of statistics to monitor
+	 * @return {@code AsyncContext} represents the context for asynchronous operation
+	 */
 	private AsyncContext createAsyncContext(
 			HttpServletRequest request, HttpServletResponse response, String id) {
 		response.setContentType("text/csv");
@@ -290,6 +335,11 @@ public class RestClientController extends HttpServlet {
 		return result;
 	}
 
+	/**
+	 * Create a {@code Builder} instance for REST API invocation.
+	 * @param work request for a statistics to be invoked
+	 * @return {@code Builder} represents REST API invocation
+	 */
 	private Builder createInvocation(StatisticsRequest work) {
 		StringBuilder buffer = new StringBuilder();
 		buffer.append(work.getUser()).append(':').append(work.getPassword());
@@ -298,7 +348,7 @@ public class RestClientController extends HttpServlet {
 		buffer.append("Basic ").append(encoded);
 		String authorization = buffer.toString();
 
-		return client.target(work.getLocation().concat(work.getQuery()))
+		return client.target(work.getLocation().concat(work.getQuery()).replace(' ', '+'))
 				.request()
 				.accept(MediaType.APPLICATION_JSON)
 				.header(HttpHeaders.AUTHORIZATION, authorization);
